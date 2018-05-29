@@ -1,0 +1,158 @@
+If a data file is damaged and no backup of the file is avilable, then you can still recover the data file if:
+- All archived log files written after the creation of the original data file are avilable.
+- The control file contains the name of the damaged file(that is, the control file is current, or is a backup
+  taken after the damaged data file was added to the database)
+
+RMAN> list backup;
+
+specification does not match any backup in the repository
+
+SQL> select file#,name,status from v$datafile;
+
+     FILE#
+----------
+NAME
+--------------------------------------------------------------------------------
+STATUS
+-------
+	 1
+/database/app/oracle/oradata/ncscm/system01.dbf
+SYSTEM
+
+	 3
+/database/app/oracle/oradata/ncscm/sysaux01.dbf
+ONLINE
+
+     FILE#
+----------
+NAME
+--------------------------------------------------------------------------------
+STATUS
+-------
+
+	 4
+/database/app/oracle/oradata/ncscm/undotbs01.dbf
+ONLINE
+
+	 5
+/database/app/oracle/oradata/ncscm/example01.dbf
+
+     FILE#
+----------
+NAME
+--------------------------------------------------------------------------------
+STATUS
+-------
+ONLINE
+
+	 6
+/database/app/oracle/oradata/ncscm/users01.dbf
+ONLINE
+
+
+SQL> create tablespace cip
+  2  datafile'/database/app/oracle/oradata/ncscm/cip.dbf'
+  3  size 200m
+  4* autoextend on
+SQL> /
+
+Tablespace created.
+
+SQL> create user cip identified by cip
+  2  default tablespace cip;
+
+User created.
+
+SQL> grant dba to cip;
+
+Grant succeeded.
+
+SQL> alter user cip quota unlimited on cip;
+
+User altered.
+
+[oracle@localhost ~]$ sqlplus 
+
+SQL*Plus: Release 12.1.0.2.0 Production on Sun May 13 08:06:48 2018
+
+Copyright (c) 1982, 2014, Oracle.  All rights reserved.
+
+Enter user-name: cip
+Enter password: 
+
+Connected to:
+Oracle Database 12c Enterprise Edition Release 12.1.0.2.0 - 64bit Production
+With the Partitioning, OLAP, Advanced Analytics and Real Application Testing options
+
+SQL> create table emp(emp_id number,emp_name varchar2(200));
+
+Table created.
+
+SQL> insert into emp values(1,'kamal');
+
+1 row created.
+
+SQL> /
+
+1 row created.
+
+SQL> /
+
+1 row created.
+
+SQL> commit;
+
+Commit complete.
+
+We tried to create a new table in the CIP tablespace, and returns the following error:
+
+SQL> create table emptst as select * from emp;
+create table emptst as select * from emp
+                                     *
+ERROR at line 1:
+ORA-01116: error in opening database file 2
+ORA-01110: data file 2: '/database/app/oracle/oradata/ncscm/cip.dbf'
+ORA-27041: unable to open file
+Linux-x86_64 Error: 2: No such file or directory
+Additional information: 3
+After checking the CIP datafile status, we discovered it is corrupted
+and there is no backup for this datafile:
+We need all the following steps to recover the datafile:
+
+SQL> alter tablespace cip offline immediate;
+SQL>alter database create datafile'/database/app/oracle/oradata/ncscm/cip.dbf'
+   as '/database/app/oracle/oradata/ncscm/cip.dbf'
+
+Database altered.
+SQL> recover datafile'/database/app/oracle/oradata/ncscm/cip.dbf';
+Media recovery complete.
+SQL> conn
+Enter user-name: cip
+Enter password: 
+Connected.
+SQL> select * from emp;
+select * from emp
+              *
+ERROR at line 1:
+ORA-00376: file 2 cannot be read at this time
+ORA-01110: data file 2: '/database/app/oracle/oradata/ncscm/cip.dbf'
+
+
+SQL> alter tablespace cip online;
+
+Tablespace altered.
+
+SQL> select * from emp;
+
+    EMP_ID
+----------
+EMP_NAME
+--------------------------------------------------------------------------------
+	 1
+kamal
+
+	 1
+kamal
+
+	 1
+kamal
